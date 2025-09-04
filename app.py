@@ -67,7 +67,6 @@ DOCILE
 MODERATE MILK YIELD, RESISTANT TO DISEASE"""
 }
 
-
 # Normalize keys
 breed_info = {k.lower().strip(): v for k, v in breed_info_raw.items()}
 
@@ -86,16 +85,20 @@ st.info("📁 Please upload a cattle image to start prediction.")
 # Image uploader
 uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
 
-# Prediction function
+# ✅ Prediction function with fix applied
 def predict_breed(image):
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    prediction = model.predict(img_array)[0]
+
+    # Wrap in list to fix multiple input tensor issue
+    prediction = model.predict([img_array])[0]
+
     predicted_label = breed_labels[np.argmax(prediction)]
     confidence = float(np.max(prediction)) * 100
     return predicted_label, confidence
 
+# Display breed info
 def display_breed_info(breed_key, raw_text):
     try:
         lines = raw_text.strip().split("\n")
@@ -126,7 +129,6 @@ def display_breed_info(breed_key, raw_text):
 
     except Exception as e:
         st.error(f"❌ Error parsing breed info: {str(e)}")
-
 
 # Handle image and prediction
 if uploaded_file is not None:
