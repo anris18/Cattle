@@ -1,9 +1,8 @@
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-import cv2
 import os
 
 # Set page config
@@ -101,25 +100,21 @@ breed_info = {
 # Image size for model input
 IMG_SIZE = 224
 
-# Enhanced image preprocessing
+# Enhanced image preprocessing without OpenCV
 def preprocess_image(image):
-    """Enhanced image preprocessing for better predictions"""
+    """Enhanced image preprocessing using only PIL"""
     # Resize image
     image = image.resize((IMG_SIZE, IMG_SIZE))
     
+    # Enhance image quality
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(1.2)  # Increase contrast
+    
+    enhancer = ImageEnhance.Sharpness(image)
+    image = enhancer.enhance(1.1)  # Increase sharpness
+    
     # Convert to numpy array and normalize
     img_array = np.array(image) / 255.0
-    
-    # Apply some basic enhancements
-    if len(img_array.shape) == 3:
-        # Convert to HSV color space for better color processing
-        hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
-        
-        # Enhance contrast in Value channel
-        hsv[:, :, 2] = cv2.equalizeHist((hsv[:, :, 2] * 255).astype(np.uint8)) / 255.0
-        
-        # Convert back to RGB
-        img_array = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
     
     # Add batch dimension
     img_array = np.expand_dims(img_array, axis=0)
@@ -237,3 +232,4 @@ else:
 
 # Add footer
 st.markdown("---")
+st.markdown("**Cattle Breed Identifier** | [GitHub Repository](https://github.com/anris18/Cattle)")
