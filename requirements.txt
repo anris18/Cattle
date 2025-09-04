@@ -1,5 +1,5 @@
-streamlit
-pillow
-numpy
-opencv-python
-tensorflow-cpu>=2.0.0  # or tensorflow for GPU version
+streamlit==1.28.1
+tensorflow==2.13.0
+pillow==10.0.1
+numpy==1.24.3
+gdown==4.7.1
