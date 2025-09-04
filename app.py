@@ -192,6 +192,7 @@ def display_breed_info(breed_name):
             padding: 15px; 
             border-radius: 8px; 
             margin-bottom: 10px;
+            font-color: #ff0000;
             font-size: 16px;
         ">
             <p>🧬 <b>Pedigree / Lineage</b>: {info['Pedigree']}</p>
