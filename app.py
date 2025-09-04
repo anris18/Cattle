@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 import os
+import base64
 
 # Set page config
 st.set_page_config(
@@ -10,7 +11,82 @@ st.set_page_config(
     page_icon="🐄"
 )
 
+# Add custom CSS for white background and cow background image
+def set_background():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: white;
+            background-image: url('https://images.unsplash.com/photo-1527153857715-3908f2bae5e8?ixlib=rb-4.0.3&auto=format&fit=crop&w=2089&q=80');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+        
+        .main {
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 15px;
+            margin: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stButton>button {
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            border: none;
+            font-weight: bold;
+        }
+        
+        .stButton>button:hover {
+            background-color: #45a049;
+        }
+        
+        .stExpander {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+        }
+        
+        .stSuccess {
+            background-color: #d4edda;
+            color: #155724;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .stInfo {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .stWarning {
+            background-color: #fff3cd;
+            color: #856404;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .stError {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+set_background()
+
 # Title and description
+st.markdown('<div class="main">', unsafe_allow_html=True)
 st.title("🐄 Cattle Breed Identifier")
 st.write("Upload an image of a cow to predict its breed with high accuracy.")
 
@@ -121,13 +197,27 @@ def analyze_image_detailed(image):
         avg_red = avg_green = avg_blue = np.mean(gray_img)
         std_red = std_green = std_blue = np.std(gray_img)
     
-    # Texture analysis using edge detection
-    from scipy import ndimage
+    # Texture analysis using edge detection (manual implementation to avoid scipy)
+    def simple_gradient(img):
+        """Simple gradient calculation without scipy"""
+        h, w = img.shape
+        dx = np.zeros_like(img)
+        dy = np.zeros_like(img)
+        
+        # Central differences
+        dx[:, 1:-1] = (img[:, 2:] - img[:, :-2]) / 2.0
+        dy[1:-1, :] = (img[2:, :] - img[:-2, :]) / 2.0
+        
+        # Forward differences for edges
+        dx[:, 0] = img[:, 1] - img[:, 0]
+        dx[:, -1] = img[:, -1] - img[:, -2]
+        dy[0, :] = img[1, :] - img[0, :]
+        dy[-1, :] = img[-1, :] - img[-2, :]
+        
+        return dx, dy
     
-    # Calculate gradients
-    dx = ndimage.sobel(gray_img, axis=0)
-    dy = ndimage.sobel(gray_img, axis=1)
-    gradient_magnitude = np.hypot(dx, dy)
+    dx, dy = simple_gradient(gray_img.astype(float))
+    gradient_magnitude = np.sqrt(dx**2 + dy**2)
     
     # Advanced features
     features = {
@@ -169,7 +259,7 @@ def expert_breed_identification(features):
     # Friesian rules (high contrast, black and white)
     if features['contrast'] > 50 and features['color_variance'] > 45:
         scores['friesian'] += 4
-    if features['avg_brightness'] < 160 and features['contrast'] > 40:
+    if features['brightness'] < 160 and features['contrast'] > 40:
         scores['friesian'] += 2
     
     # Jersey rules (light brown, uniform)
@@ -375,3 +465,6 @@ st.markdown("**Cattle Breed Identifier** | [GitHub Repository](https://github.co
 
 # Add success message
 st.success("✨ This app uses advanced image analysis with expert rules for accurate breed identification!")
+
+# Close the main div
+st.markdown('</div>', unsafe_allow_html=True)
