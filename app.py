@@ -377,7 +377,7 @@ def display_breed_info(breed_name):
         info_html = f"""
         <div style="
             border: 2px solid #4CAF50; 
-            background-color: #f0f9f0; 
+            background-color: #A52A2A; 
             padding: 15px; 
             border-radius: 8px; 
             margin-bottom: 10px;
