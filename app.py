@@ -383,7 +383,7 @@ def display_breed_info(breed_name):
             margin-bottom: 10px;
             font-size: 16px;
             font-color: #000000;
-            color: #000000;
+            color: #D2B48C;
         ">
             <p>🧬 <b>Pedigree / Lineage</b>: {info['Pedigree']}</p>
             <p>🍼 <b>Productivity</b>: {info['Productivity']}</p>
