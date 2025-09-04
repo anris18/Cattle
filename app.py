@@ -1,42 +1,70 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tensorflow as tf
-from tensorflow.keras import layers, models
+import os
 
-# Create a simple model directly in the code
-@st.cache_resource
-def create_model():
-    # Create a simple CNN model architecture
-    model = models.Sequential([
-        layers.Conv2D(16, (3, 3), activation='relu', input_shape=(224, 224, 3)),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(32, (3, 3), activation='relu'),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation='relu'),
-        layers.MaxPooling2D((2, 2)),
-        layers.Flatten(),
-        layers.Dense(64, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(6, activation='softmax')  # 6 breeds
-    ])
-    
-    # Compile the model
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-    
-    return model
-
-# Load or create model
+# Try to import TensorFlow with error handling
 try:
-    model = create_model()
-    # Initialize with random weights (for demonstration)
-    # In a real app, you would load pre-trained weights here
-    st.success("✅ Model loaded successfully (demo mode)")
-except Exception as e:
-    st.error(f"❌ Error creating model: {str(e)}")
+    import tensorflow as tf
+    from tensorflow.keras.models import load_model
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    st.warning("TensorFlow not available. Running in demo mode.")
+
+# Try to import joblib with error handling
+try:
+    import joblib
+    JOBLIB_AVAILABLE = True
+except ImportError:
+    JOBLIB_AVAILABLE = False
+    st.warning("Joblib not available. Running in demo mode.")
+
+# Set page config
+st.set_page_config(
+    page_title="🐄 Cattle Breed Identifier", 
+    layout="centered",
+    page_icon="🐄"
+)
+
+# Title and description
+st.title("🐄 Cattle Breed Identifier")
+st.write("Upload an image of a cow to predict its breed.")
+
+# Define breed labels
+breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Zebu"]
+
+# Check and load model files
+@st.cache_resource
+def load_cattle_model():
+    model_path_h5 = "cattle_breed_model.h5"
+    model_path_joblib = "cattle_breed_model.joblib"
+    
     model = None
+    model_type = None
+    
+    # Try to load TensorFlow model
+    if TENSORFLOW_AVAILABLE and os.path.exists(model_path_h5):
+        try:
+            model = load_model(model_path_h5)
+            model_type = "h5"
+            st.success("✅ TensorFlow model loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading TensorFlow model: {e}")
+    
+    # Try to load joblib model if TensorFlow model not available
+    if model is None and JOBLIB_AVAILABLE and os.path.exists(model_path_joblib):
+        try:
+            model = joblib.load(model_path_joblib)
+            model_type = "joblib"
+            st.success("✅ Joblib model loaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading joblib model: {e}")
+    
+    return model, model_type
+
+# Load model
+model, model_type = load_cattle_model()
 
 # Breed information
 breed_info = {
@@ -102,68 +130,52 @@ breed_info = {
     }
 }
 
-# Breed labels
-breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Zebu"]
+# Image size for model input
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# Streamlit UI
-st.set_page_config(page_title="🐄 Cattle Breed Identifier", layout="centered")
-st.title("🐄 Cattle Breed Identifier")
-st.write("Upload an image of a cow to predict its breed.")
-
-if model is None:
-    st.info("🔧 Running in demonstration mode without model support.")
-
-# Image uploader
-uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
-
-# Enhanced prediction function with feature extraction
+# Prediction function
 def predict_breed(image):
     # Preprocess image
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     
-    # Simple feature-based "prediction" (since we don't have trained weights)
-    # This is a heuristic approach for demonstration
-    img_array = np.expand_dims(img_array, axis=0)
-    
-    if model is not None:
+    if model is not None and model_type == "h5" and TENSORFLOW_AVAILABLE:
+        # TensorFlow model prediction
+        img_array = np.expand_dims(img_array, axis=0)
+        prediction = model.predict(img_array, verbose=0)[0]
+    elif model is not None and model_type == "joblib" and JOBLIB_AVAILABLE:
+        # Scikit-learn model prediction (reshape for sklearn)
+        img_array_flat = img_array.flatten().reshape(1, -1)
         try:
-            # Get model prediction (will be random without training)
-            prediction = model.predict(img_array, verbose=0)[0]
+            prediction_proba = model.predict_proba(img_array_flat)[0]
+            prediction = prediction_proba
         except:
-            # Fallback to heuristic approach if model fails
-            prediction = heuristic_prediction(image)
+            # Fallback if predict_proba not available
+            prediction = demo_prediction(image)
     else:
-        # Use heuristic approach if no model
-        prediction = heuristic_prediction(image)
+        # Fallback to demo mode
+        prediction = demo_prediction(image)
     
-    predicted_label = breed_labels[np.argmax(prediction)]
+    # Get predicted class
+    predicted_idx = np.argmax(prediction)
+    predicted_label = breed_labels[predicted_idx]
     confidence = float(np.max(prediction)) * 100
     return predicted_label, confidence
 
-# Heuristic approach for breed prediction based on image characteristics
-def heuristic_prediction(image):
+# Demo prediction function if model is not available
+def demo_prediction(image):
     # Convert to numpy array for processing
     img_array = np.array(image)
     
-    # Simple heuristics based on color and patterns
-    # This is just for demonstration purposes
-    
-    # Calculate average color
+    # Simple heuristics based on color and patterns for demo purposes
     avg_color = np.mean(img_array, axis=(0, 1))
-    
-    # Calculate color variance (for spotting)
     color_variance = np.var(img_array, axis=(0, 1))
-    
-    # Simple rules based on color characteristics
-    # These are arbitrary rules for demonstration only
     
     # Default probabilities
     probabilities = np.array([0.15, 0.25, 0.20, 0.10, 0.15, 0.15])
     
-    # Adjust based on color characteristics (very simple heuristics)
+    # Adjust based on color characteristics
     if avg_color[0] > 150:  # Reddish tones
         probabilities[0] += 0.2  # Ayrshire
         probabilities[4] += 0.1  # Sahiwal
@@ -180,6 +192,7 @@ def heuristic_prediction(image):
     
     return probabilities
 
+# Function to display breed information
 def display_breed_info(breed_name):
     breed_key = breed_name.lower()
     if breed_key in breed_info:
@@ -192,7 +205,7 @@ def display_breed_info(breed_name):
             border-radius: 8px; 
             margin-bottom: 10px;
             font-size: 16px;
-            color: #000000;  /* Explicit black text color */
+            color: #000000;
         ">
             <p>🧬 <b style="color: #000000;">Pedigree / Lineage</b>: <span style="color: #000000;">{info['Pedigree']}</span></p>
             <p>🍼 <b style="color: #000000;">Productivity</b>: <span style="color: #000000;">{info['Productivity']}</span></p>
@@ -208,11 +221,20 @@ def display_breed_info(breed_name):
     else:
         st.warning("⚠️ No additional information found for this breed.")
 
+# Display model status
+if model is None:
+    st.info("🔧 Running in demonstration mode. For accurate predictions, please ensure model files are available.")
+else:
+    st.success(f"✅ Model loaded successfully! (Type: {model_type})")
+
+# Image uploader
+uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
+
 # Handle image and prediction
 if uploaded_file is not None:
     try:
         image = Image.open(uploaded_file).convert('RGB')
-        st.image(image, caption='📷 Uploaded Cattle Image', use_container_width=True)
+        st.image(image, caption='📷 Uploaded Cattle Image', width='stretch')
         
         # Show image analysis
         with st.expander("🔍 Image Analysis", expanded=True):
@@ -231,7 +253,7 @@ if uploaded_file is not None:
         if confidence < CONFIDENCE_THRESHOLD:
             st.warning("⚠️ Low confidence prediction. This might not be accurate.")
         else:
-            st.success(f"✅ Predicted Breed: **{breed}**")
+            st.success(f"✅ Predicted Breed: **{breed.capitalize()}**")
         
         st.info(f"🔎 Confidence: {confidence:.2f}%")
         
@@ -239,7 +261,7 @@ if uploaded_file is not None:
         st.subheader("📚 Breed Information")
         display_breed_info(breed)
         
-        # Disclaimer - with explicit text color
+        # Disclaimer
         st.markdown("""
         <div style="color: #000000;">
         **ℹ️ Note:** This is a demonstration application. 
@@ -269,21 +291,27 @@ else:
     - Ensure the cattle is the main subject of the photo
     - Avoid blurry or distant shots
     """)
+
+# Add instructions for setting up the model files
+with st.expander("ℹ️ Setup Instructions"):
+    st.markdown("""
+    ## How to set up the model files:
     
-    # Add some sample images or placeholders
-    st.subheader("🖼️ Sample Images")
-    st.write("For best results, upload images similar to these:")
+    1. Ensure you have the following files in your working directory:
+       - `cattle_breed_model.h5` (TensorFlow model) OR
+       - `cattle_breed_model.joblib` (Scikit-learn model)
     
-    sample_cols = st.columns(3)
-    with sample_cols[0]:
-        st.write("**Friesian Cattle**")
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Cow_female_black_white.jpg/320px-Cow_female_black_white.jpg", 
-                 use_container_width=True)
-    with sample_cols[1]:
-        st.write("**Jersey Cattle**")
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Jersey_cow.jpg/320px-Jersey_cow.jpg", 
-                 use_container_width=True)
-    with sample_cols[2]:
-        st.write("**Sahiwal Cattle**")
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Sahiwal_cow.jpg/320px-Sahiwal_cow.jpg", 
-                 use_container_width=True)
+    2. The app supports both TensorFlow and Scikit-learn models.
+    
+    ## File structure:
+    ```
+    your-project-folder/
+    ├── app.py
+    ├── cattle_breed_model.h5 (or cattle_breed_model.joblib)
+    └── requirements.txt
+    ```
+    """)
+
+# Add footer
+st.markdown("---")
+st.markdown("**Cattle Breed Identifier** | [GitHub Repository](https://github.com/anris18/Cattle)")
