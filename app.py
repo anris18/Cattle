@@ -39,6 +39,11 @@ def load_cattle_model():
             model = joblib.load(model_path_joblib)
             model_type = "joblib"
             st.success("✅ Joblib model loaded successfully!")
+            
+            # Check model type and expected features
+            if hasattr(model, 'n_features_in_'):
+                st.info(f"Model expects {model.n_features_in_} features")
+            
         except Exception as e:
             st.error(f"Error loading joblib model: {e}")
     
@@ -115,30 +120,45 @@ breed_info = {
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# Feature extraction function for images
+# Feature extraction function for images - now with 9 features
 def extract_features(image):
-    """Extract basic features from image for machine learning models"""
+    """Extract 9 features from image to match the trained model"""
     # Resize image
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     
-    # Extract color features
+    # Extract color features (3 features)
     avg_color = np.mean(img_array, axis=(0, 1))
+    
+    # Extract color standard deviation (3 features)
     color_std = np.std(img_array, axis=(0, 1))
     
-    # Extract texture features (simple edge detection)
+    # Convert to grayscale for texture analysis
     if len(img_array.shape) == 3:
         gray_img = np.mean(img_array, axis=2)
     else:
         gray_img = img_array
     
-    # Simple texture feature (edge intensity)
+    # Extract texture features - gradient magnitude (1 feature)
     dy, dx = np.gradient(gray_img)
     gradient_magnitude = np.sqrt(dx**2 + dy**2)
     texture_feature = np.mean(gradient_magnitude)
     
-    # Combine all features
-    features = np.concatenate([avg_color, color_std, [texture_feature]])
+    # Extract texture features - gradient variance (1 feature)
+    texture_variance = np.var(gradient_magnitude)
+    
+    # Extract brightness feature (1 feature)
+    brightness = np.mean(gray_img)
+    
+    # Combine all features to get 9 total features
+    # 3 color means + 3 color stds + 1 texture mean + 1 texture variance + 1 brightness = 9 features
+    features = np.concatenate([
+        avg_color,          # 3 features
+        color_std,          # 3 features
+        [texture_feature],  # 1 feature
+        [texture_variance], # 1 feature
+        [brightness]        # 1 feature
+    ])
     
     return features
 
@@ -149,8 +169,11 @@ def predict_breed(image):
     
     if model is not None and model_type == "joblib":
         try:
-            # Reshape for sklearn
+            # Reshape for sklearn (1 sample, n features)
             features_reshaped = features.reshape(1, -1)
+            
+            # Debug: show feature count
+            st.write(f"Extracted {len(features)} features")
             
             # Check if model has predict_proba method
             if hasattr(model, 'predict_proba'):
@@ -169,6 +192,7 @@ def predict_breed(image):
             prediction = prediction_proba
         except Exception as e:
             st.error(f"Prediction error: {e}")
+            # Fallback to demo mode
             prediction = demo_prediction(image)
     else:
         # Fallback to demo mode
@@ -330,4 +354,3 @@ with st.expander("ℹ️ Setup Instructions"):
 
 # Add footer
 st.markdown("---")
-st.markdown("**Cattle Breed Identifier** | [GitHub Repository](https://github.com/anris18/Cattle)")
