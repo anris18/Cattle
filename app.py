@@ -1,7 +1,12 @@
 import streamlit as st
-import tensorflow as tf
+from tensorflow import keras
 import numpy as np
 from PIL import Image
+
+# And change the model loading:
+@st.cache_resource
+def load_model():
+    return keras.models.load_model("cattle_breed_model.h5", compile=False)
 
 # --- Load Model ---
 @st.cache_resource
