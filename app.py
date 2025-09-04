@@ -85,14 +85,14 @@ st.info("📁 Please upload a cattle image to start prediction.")
 # Image uploader
 uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
 
-# ✅ Prediction function with fix applied
+# ✅ Prediction function patched for double-input model
 def predict_breed(image):
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # Wrap in list to fix multiple input tensor issue
-    prediction = model.predict([img_array])[0]
+    # Feed the same image twice (model expects 2 inputs)
+    prediction = model.predict([img_array, img_array])[0]
 
     predicted_label = breed_labels[np.argmax(prediction)]
     confidence = float(np.max(prediction)) * 100
