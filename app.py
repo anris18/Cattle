@@ -1,9 +1,53 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import os
+import cv2
 
-# --- Breed Information ---
+# For TensorFlow Lite version (more compatible)
+try:
+    import tflite_runtime.interpreter as tflite
+    TFLITE_AVAILABLE = True
+except:
+    TFLITE_AVAILABLE = False
+
+# For full TensorFlow version
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+except:
+    TF_AVAILABLE = False
+
+# Load model - try multiple approaches for compatibility
+@st.cache_resource
+def load_model():
+    model = None
+    model_type = "none"
+    
+    # Try to load TensorFlow Lite model first (more compatible)
+    if TFLITE_AVAILABLE:
+        try:
+            interpreter = tflite.Interpreter(model_path="cattle_breed_model.tflite")
+            interpreter.allocate_tensors()
+            model = interpreter
+            model_type = "tflite"
+            st.success("Loaded TensorFlow Lite model")
+        except:
+            pass
+    
+    # Try to load full TensorFlow model if Lite not available
+    if model is None and TF_AVAILABLE:
+        try:
+            model = tf.keras.models.load_model("cattle_breed_model.h5")
+            model_type = "tf"
+            st.success("Loaded TensorFlow model")
+        except:
+            pass
+    
+    return model, model_type
+
+model, model_type = load_model()
+
+# Breed information split into fields
 breed_info_raw = {
     "ayrshire": """DEVELOPED IN THE COUNTY OF AYRSHIRE IN SOUTHWESTERN SCOTLAND
 4500 Liters
@@ -60,210 +104,116 @@ DOCILE
 MODERATE MILK YIELD, RESISTANT TO DISEASE"""
 }
 
+# Normalize keys
 breed_info = {k.lower().strip(): v for k, v in breed_info_raw.items()}
+
+# Breed labels in model output order
 breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Zebu"]
 
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# --- Load Model ---
-@st.cache_resource
-def load_model():
-    try:
-        import tensorflow as tf
-        
-        if not os.path.exists("cattle_breed_model.h5"):
-            st.error("❌ Model file 'cattle_breed_model.h5' not found!")
-            return None
-            
-        # Try different loading strategies
-        try:
-            # Method 1: Standard load
-            model = tf.keras.models.load_model("cattle_breed_model.h5", compile=False)
-            st.success("✅ Model loaded successfully with compile=False")
-            return model
-            
-        except Exception as e1:
-            st.warning(f"First load attempt failed: {e1}")
-            
-            try:
-                # Method 2: Load with compilation
-                model = tf.keras.models.load_model("cattle_breed_model.h5", compile=True)
-                st.success("✅ Model loaded successfully with compile=True")
-                return model
-                
-            except Exception as e2:
-                st.warning(f"Second load attempt failed: {e2}")
-                
-                try:
-                    # Method 3: Try loading with custom objects for specific architectures
-                    # This is common for models with custom layers or functional API
-                    model = tf.keras.models.load_model(
-                        "cattle_breed_model.h5", 
-                        compile=False,
-                        custom_objects={}
-                    )
-                    st.success("✅ Model loaded with custom objects")
-                    return model
-                    
-                except Exception as e3:
-                    st.error(f"All loading methods failed: {e3}")
-                    return None
-                    
-    except ImportError:
-        st.error("❌ TensorFlow not available!")
-        return None
-    except Exception as e:
-        st.error(f"❌ Unexpected error loading model: {e}")
-        return None
+# Streamlit UI setup
+st.set_page_config(page_title="🐄 Cattle Breed Identifier", layout="centered")
+st.title("🐄 Cattle Breed Identifier")
+st.write("Upload an image of a cow to predict its breed.")
 
-# Load model
-model = load_model()
-
-# --- Prediction with error handling ---
-def predict_breed(image):
-    if model is None:
-        return "Model not available", 0.0
-    
-    try:
-        # Preprocess image
-        image = image.resize((IMG_SIZE, IMG_SIZE))
-        img_array = np.array(image) / 255.0
-        
-        # Handle different input formats based on model architecture
-        if len(model.input_shape) == 4:  # Standard CNN (batch, height, width, channels)
-            img_array = np.expand_dims(img_array, axis=0)
-        elif len(model.input_shape) == 2:  # Flattened input
-            img_array = img_array.flatten()
-            img_array = np.expand_dims(img_array, axis=0)
-        
-        # Make prediction
-        prediction = model.predict(img_array, verbose=0)
-        
-        # Handle different output formats
-        if isinstance(prediction, list):
-            # Model returns multiple outputs
-            prediction = prediction[0]  # Take the first output
-        
-        prediction = prediction[0]  # Get first batch element
-        
-        predicted_label = breed_labels[np.argmax(prediction)]
-        confidence = float(np.max(prediction)) * 100
-        return predicted_label, confidence
-        
-    except Exception as e:
-        return f"Prediction error: {str(e)}", 0.0
-
-# --- Streamlit UI ---
-st.set_page_config(page_title="🐄 Cattle Breed Classifier", layout="centered")
-st.title("🐄 Cattle Breed Classifier")
-st.write("Upload a cattle image and let AI identify its breed.")
-
-# Check TensorFlow availability
-try:
-    import tensorflow as tf
-    TENSORFLOW_AVAILABLE = True
-    tf_version = tf.__version__
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    tf_version = "Not installed"
-
-# Display status
-if not TENSORFLOW_AVAILABLE:
-    st.error("❌ TensorFlow not installed!")
-else:
-    st.success(f"✅ TensorFlow {tf_version} installed")
-
+# Check if model loaded successfully
 if model is None:
-    st.error("❌ Model could not be loaded. Possible reasons:")
-    st.write("- Model architecture mismatch")
-    st.write("- TensorFlow version incompatibility")
-    st.write("- Corrupted model file")
-    st.write("- Missing custom layers")
+    st.error("❌ Could not load the model. Please ensure the model file is available.")
+    st.info("If you don't have a model, the app will run in demonstration mode with sample predictions.")
 else:
-    st.success("✅ Model loaded successfully!")
+    st.info("📁 Please upload a cattle image to start prediction.")
+
+# Image uploader
+uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
+
+# Prediction function
+def predict_breed(image):
+    # Preprocess image
+    image = image.resize((IMG_SIZE, IMG_SIZE))
+    img_array = np.array(image) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
     
-    # Display model info for debugging
-    with st.expander("🔧 Model Information"):
-        st.write(f"Input shape: {model.input_shape}")
-        st.write(f"Output shape: {model.output_shape}")
-        st.write(f"Number of layers: {len(model.layers)}")
-        st.write(f"Model type: {type(model)}")
+    if model_type == "tflite":
+        # Get input and output tensors
+        input_details = model.get_input_details()
+        output_details = model.get_output_details()
+        
+        # Set the tensor to point to the input data
+        model.set_tensor(input_details[0]['index'], img_array.astype(np.float32))
+        
+        # Run the computation
+        model.invoke()
+        
+        # Extract the output
+        prediction = model.get_tensor(output_details[0]['index'])[0]
+    elif model_type == "tf":
+        prediction = model.predict(img_array)[0]
+    else:
+        # Demo mode - return random prediction
+        prediction = np.random.rand(len(breed_labels))
+        prediction = prediction / np.sum(prediction)  # Normalize to sum to 1
+    
+    predicted_label = breed_labels[np.argmax(prediction)]
+    confidence = float(np.max(prediction)) * 100
+    return predicted_label, confidence
 
-# File uploader
-uploaded_file = st.file_uploader("Upload Cattle Image", type=["jpg", "jpeg", "png"])
+def display_breed_info(breed_key, raw_text):
+    try:
+        lines = raw_text.strip().split("\n")
+        if len(lines) < 8:
+            st.warning("⚠️ Incomplete breed info.")
+            return
 
+        info_html = f"""
+        <div style="
+            border: 2px solid #007bff; 
+            background-color: #e7f1ff; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 10px;
+            font-size: 16px;
+        ">
+            <p>🧬 <b>Pedigree / Lineage</b>: {lines[0]}</p>
+            <p>🍼 <b>Productivity</b>: {lines[1]}</p>
+            <p>🌿 <b>Optimal Rearing Conditions</b>: {lines[2]}</p>
+            <p>🌍 <b>Origin</b>: {lines[3]}</p>
+            <p>🐮 <b>Physical Characteristics</b>: {lines[4]}</p>
+            <p>❤️️ <b>Lifespan (Years)</b>: {lines[5]}</p>
+            <p>💉 <b>Temperament</b>: {lines[6]}</p>
+            <p>🥩 <b>Productivity Metrics</b>: {lines[7]}</p>
+        </div>
+        """
+        st.markdown(info_html, unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"❌ Error parsing breed info: {str(e)}")
+
+# Handle image and prediction
 if uploaded_file is not None:
     try:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="📷 Uploaded Cattle Image", use_column_width=True)
+        image = Image.open(uploaded_file).convert('RGB')
+        st.image(image, caption='📷 Uploaded Cattle Image', use_container_width=True)
 
-        if model is not None:
-            with st.spinner("🔍 Identifying breed..."):
-                breed, confidence = predict_breed(image)
+        with st.spinner("🔍 Identifying breed..."):
+            breed, confidence = predict_breed(image)
 
-            if "error" in breed.lower():
-                st.error(f"❌ {breed}")
-            elif confidence < CONFIDENCE_THRESHOLD:
-                st.error("🚫 Low confidence. Try a clearer cattle image.")
-                st.info(f"Current confidence: {confidence:.2f}%")
-            else:
-                st.success(f"✅ Predicted Breed: **{breed}**")
-                st.info(f"🔎 Confidence: {confidence:.2f}%")
-
-                breed_key = breed.lower().strip()
-                if breed_key in breed_info:
-                    lines = breed_info[breed_key].strip().split("\n")
-                    if len(lines) >= 8:
-                        st.subheader("📚 Breed Information")
-                        st.write(f"🧬 **Pedigree / Lineage:** {lines[0]}")
-                        st.write(f"🍼 **Productivity:** {lines[1]}")
-                        st.write(f"🌿 **Optimal Rearing Conditions:** {lines[2]}")
-                        st.write(f"🌍 **Origin:** {lines[3]}")
-                        st.write(f"🐮 **Physical Characteristics:** {lines[4]}")
-                        st.write(f"❤️️ **Lifespan (Years):** {lines[5]}")
-                        st.write(f"💉 **Temperament:** {lines[6]}")
-                        st.write(f"🥩 **Productivity Metrics:** {lines[7]}")
-                else:
-                    st.warning("⚠️ No additional information found for this breed.")
+        if model is None:
+            st.warning("⚠️ Running in demonstration mode (no actual model loaded)")
+        
+        if confidence < CONFIDENCE_THRESHOLD:
+            st.error("🚫 Could not confidently identify the breed. Try another or clearer image.")
         else:
-            st.warning("⚠️ Cannot make predictions - model is not loaded.")
-            
+            st.success(f"✅ Predicted Breed: **{breed}**")
+            st.caption(f"🔎 Confidence: {confidence:.2f}%")
+
+            breed_key = breed.lower().strip()
+            if breed_key in breed_info:
+                st.subheader("📚 Structured Breed Information")
+                display_breed_info(breed_key, breed_info[breed_key])
+            else:
+                st.warning("⚠️ No additional information found for this breed.")
+
     except Exception as e:
-        st.error(f"❌ Error processing image: {e}")
-
-# Debug information
-with st.expander("🛠️ Debug Information"):
-    st.write(f"TensorFlow Available: {TENSORFLOW_AVAILABLE}")
-    if TENSORFLOW_AVAILABLE:
-        st.write(f"TensorFlow Version: {tf_version}")
-    st.write(f"Model Loaded: {model is not None}")
-    st.write(f"Model File Exists: {os.path.exists('cattle_breed_model.h5')}")
-    if os.path.exists("cattle_breed_model.h5"):
-        st.write(f"Model file size: {os.path.getsize('cattle_breed_model.h5')} bytes")
-
-# Troubleshooting guide
-with st.expander("❓ Troubleshooting Guide"):
-    st.write("""
-    **Common Solutions:**
-    
-    1. **TensorFlow Version Mismatch:**
-       - Try: `pip install tensorflow==2.12.0`
-    
-    2. **Model Architecture Issues:**
-       - The model might have been created with a different architecture
-       - Try recreating the model with current TensorFlow version
-    
-    3. **Custom Layers:**
-       - If the model uses custom layers, they need to be defined during loading
-    
-    4. **Corrupted File:**
-       - Verify the model file is not corrupted
-       - Try re-uploading the model file
-    
-    **Quick Fix:**
-    ```bash
-    pip uninstall tensorflow -y
-    pip install tensorflow==2.12.0
-    ```
-    """)
+        st.error(f"⚠️ Error processing image: {str(e)}")
