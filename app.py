@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 from PIL import Image
-import cv2
 
 # For TensorFlow Lite version (more compatible)
 try:
@@ -130,10 +129,13 @@ uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "
 
 # Prediction function
 def predict_breed(image):
-    # Preprocess image
+    # Preprocess image using PIL only
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    
+    # Add batch dimension
+    if len(img_array.shape) == 3:
+        img_array = np.expand_dims(img_array, axis=0)
     
     if model_type == "tflite":
         # Get input and output tensors
