@@ -3,14 +3,14 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-# Load model
-@st.cache(allow_output_mutation=True)
+# --- Load Model ---
+@st.cache_resource
 def load_model():
     return tf.keras.models.load_model("cattle_breed_model.h5", compile=False)
 
 model = load_model()
 
-# Breed information split into fields
+# --- Breed Information ---
 breed_info_raw = {
     "ayrshire": """DEVELOPED IN THE COUNTY OF AYRSHIRE IN SOUTHWESTERN SCOTLAND
 4500 Liters
@@ -67,88 +67,54 @@ DOCILE
 MODERATE MILK YIELD, RESISTANT TO DISEASE"""
 }
 
-
-# Normalize keys
 breed_info = {k.lower().strip(): v for k, v in breed_info_raw.items()}
-
-# Breed labels in model output order
 breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Zebu"]
 
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# Streamlit UI setup
-st.set_page_config(page_title="🐄 Cattle Breed Identifier", layout="centered")
-st.title("🐄 Cattle Breed Identifier")
-st.write("Upload an image of a cow to predict its breed.")
-st.info("📁 Please upload a cattle image to start prediction.")
-
-# Image uploader
-uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
-
-# Prediction function
+# --- Prediction ---
 def predict_breed(image):
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    prediction = model.predict(img_array)[0]
+    prediction = model.predict(img_array, verbose=0)[0]
     predicted_label = breed_labels[np.argmax(prediction)]
     confidence = float(np.max(prediction)) * 100
     return predicted_label, confidence
 
-def display_breed_info(breed_key, raw_text):
-    try:
-        lines = raw_text.strip().split("\n")
-        if len(lines) < 8:
-            st.warning("⚠️ Incomplete breed info.")
-            return
+# --- Streamlit UI ---
+st.set_page_config(page_title="🐄 Cattle Breed Classifier", layout="centered")
+st.title("🐄 Cattle Breed Classifier")
+st.write("Upload a cattle image and let AI identify its breed.")
 
-        info_html = f"""
-        <div style="
-            border: 2px solid #007bff; 
-            background-color: #e7f1ff; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin-bottom: 10px;
-            font-size: 16px;
-        ">
-            <p>🧬 <b>Pedigree / Lineage</b>: {lines[0]}</p>
-            <p>🍼 <b>Productivity</b>: {lines[1]}</p>
-            <p>🌿 <b>Optimal Rearing Conditions</b>: {lines[2]}</p>
-            <p>🌍 <b>Origin</b>: {lines[3]}</p>
-            <p>🐮 <b>Physical Characteristics</b>: {lines[4]}</p>
-            <p>❤️️ <b>Lifespan (Years)</b>: {lines[5]}</p>
-            <p>💉 <b>Temperament</b>: {lines[6]}</p>
-            <p>🥩 <b>Productivity Metrics</b>: {lines[7]}</p>
-        </div>
-        """
-        st.markdown(info_html, unsafe_allow_html=True)
+uploaded_file = st.file_uploader("Upload Cattle Image", type=["jpg", "jpeg", "png"])
 
-    except Exception as e:
-        st.error(f"❌ Error parsing breed info: {str(e)}")
-
-
-# Handle image and prediction
 if uploaded_file is not None:
-    try:
-        image = Image.open(uploaded_file).convert('RGB')
-        st.image(image, caption='📷 Uploaded Cattle Image', use_container_width=True)
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="📷 Uploaded Cattle Image", use_column_width=True)
 
-        with st.spinner("🔍 Identifying breed..."):
-            breed, confidence = predict_breed(image)
+    st.write("🔍 Identifying breed...")
+    breed, confidence = predict_breed(image)
 
-        if confidence < CONFIDENCE_THRESHOLD:
-            st.error("🚫 Could not confidently identify the breed. Try another or clearer image.")
+    if confidence < CONFIDENCE_THRESHOLD:
+        st.error("🚫 Could not confidently identify the breed. Try another or clearer image.")
+    else:
+        st.success(f"✅ Predicted Breed: **{breed}**")
+        st.info(f"🔎 Confidence: {confidence:.2f}%")
+
+        breed_key = breed.lower().strip()
+        if breed_key in breed_info:
+            lines = breed_info[breed_key].strip().split("\n")
+            if len(lines) >= 8:
+                st.subheader("📚 Breed Information")
+                st.write(f"🧬 **Pedigree / Lineage:** {lines[0]}")
+                st.write(f"🍼 **Productivity:** {lines[1]}")
+                st.write(f"🌿 **Optimal Rearing Conditions:** {lines[2]}")
+                st.write(f"🌍 **Origin:** {lines[3]}")
+                st.write(f"🐮 **Physical Characteristics:** {lines[4]}")
+                st.write(f"❤️️ **Lifespan (Years):** {lines[5]}")
+                st.write(f"💉 **Temperament:** {lines[6]}")
+                st.write(f"🥩 **Productivity Metrics:** {lines[7]}")
         else:
-            st.success(f"✅ Predicted Breed: **{breed}**")
-            st.caption(f"🔎 Confidence: {confidence:.2f}%")
-
-            breed_key = breed.lower().strip()
-            if breed_key in breed_info:
-                st.subheader("📚 Structured Breed Information")
-                display_breed_info(breed_key, breed_info[breed_key])
-            else:
-                st.warning("⚠️ No additional information found for this breed.")
-
-    except Exception as e:
-        st.error(f"⚠️ Error processing image: {str(e)}")
+            st.warning("⚠️ No additional information found for this breed.")
