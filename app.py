@@ -3,15 +3,6 @@ import numpy as np
 from PIL import Image
 import os
 
-# Try to import TensorFlow with error handling
-try:
-    import tensorflow as tf
-    from tensorflow.keras.models import load_model
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    st.warning("TensorFlow not available. Running in demo mode.")
-
 # Try to import joblib with error handling
 try:
     import joblib
@@ -37,23 +28,13 @@ breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Ze
 # Check and load model files
 @st.cache_resource
 def load_cattle_model():
-    model_path_h5 = "cattle_breed_model.h5"
     model_path_joblib = "cattle_breed_model.joblib"
     
     model = None
     model_type = None
     
-    # Try to load TensorFlow model
-    if TENSORFLOW_AVAILABLE and os.path.exists(model_path_h5):
-        try:
-            model = load_model(model_path_h5)
-            model_type = "h5"
-            st.success("✅ TensorFlow model loaded successfully!")
-        except Exception as e:
-            st.error(f"Error loading TensorFlow model: {e}")
-    
-    # Try to load joblib model if TensorFlow model not available
-    if model is None and JOBLIB_AVAILABLE and os.path.exists(model_path_joblib):
+    # Try to load joblib model
+    if JOBLIB_AVAILABLE and os.path.exists(model_path_joblib):
         try:
             model = joblib.load(model_path_joblib)
             model_type = "joblib"
@@ -134,24 +115,60 @@ breed_info = {
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# Prediction function
-def predict_breed(image):
-    # Preprocess image
+# Feature extraction function for images
+def extract_features(image):
+    """Extract basic features from image for machine learning models"""
+    # Resize image
     image = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(image) / 255.0
     
-    if model is not None and model_type == "h5" and TENSORFLOW_AVAILABLE:
-        # TensorFlow model prediction
-        img_array = np.expand_dims(img_array, axis=0)
-        prediction = model.predict(img_array, verbose=0)[0]
-    elif model is not None and model_type == "joblib" and JOBLIB_AVAILABLE:
-        # Scikit-learn model prediction (reshape for sklearn)
-        img_array_flat = img_array.flatten().reshape(1, -1)
+    # Extract color features
+    avg_color = np.mean(img_array, axis=(0, 1))
+    color_std = np.std(img_array, axis=(0, 1))
+    
+    # Extract texture features (simple edge detection)
+    if len(img_array.shape) == 3:
+        gray_img = np.mean(img_array, axis=2)
+    else:
+        gray_img = img_array
+    
+    # Simple texture feature (edge intensity)
+    dy, dx = np.gradient(gray_img)
+    gradient_magnitude = np.sqrt(dx**2 + dy**2)
+    texture_feature = np.mean(gradient_magnitude)
+    
+    # Combine all features
+    features = np.concatenate([avg_color, color_std, [texture_feature]])
+    
+    return features
+
+# Prediction function
+def predict_breed(image):
+    # Extract features from image
+    features = extract_features(image)
+    
+    if model is not None and model_type == "joblib":
         try:
-            prediction_proba = model.predict_proba(img_array_flat)[0]
+            # Reshape for sklearn
+            features_reshaped = features.reshape(1, -1)
+            
+            # Check if model has predict_proba method
+            if hasattr(model, 'predict_proba'):
+                prediction_proba = model.predict_proba(features_reshaped)[0]
+            else:
+                # For models without probability estimates
+                prediction = model.predict(features_reshaped)[0]
+                # Create dummy probabilities
+                prediction_proba = np.zeros(len(breed_labels))
+                prediction_proba[prediction] = 0.9
+                # Add some noise to other classes
+                for i in range(len(breed_labels)):
+                    if i != prediction:
+                        prediction_proba[i] = 0.1 / (len(breed_labels) - 1)
+            
             prediction = prediction_proba
-        except:
-            # Fallback if predict_proba not available
+        except Exception as e:
+            st.error(f"Prediction error: {e}")
             prediction = demo_prediction(image)
     else:
         # Fallback to demo mode
@@ -223,7 +240,7 @@ def display_breed_info(breed_name):
 
 # Display model status
 if model is None:
-    st.info("🔧 Running in demonstration mode. For accurate predictions, please ensure model files are available.")
+    st.info("🔧 Running in demonstration mode. For accurate predictions, please ensure the joblib model file is available.")
 else:
     st.success(f"✅ Model loaded successfully! (Type: {model_type})")
 
@@ -297,17 +314,16 @@ with st.expander("ℹ️ Setup Instructions"):
     st.markdown("""
     ## How to set up the model files:
     
-    1. Ensure you have the following files in your working directory:
-       - `cattle_breed_model.h5` (TensorFlow model) OR
+    1. Ensure you have the following file in your working directory:
        - `cattle_breed_model.joblib` (Scikit-learn model)
     
-    2. The app supports both TensorFlow and Scikit-learn models.
+    2. The app will use the joblib model for predictions.
     
     ## File structure:
     ```
     your-project-folder/
     ├── app.py
-    ├── cattle_breed_model.h5 (or cattle_breed_model.joblib)
+    ├── cattle_breed_model.joblib
     └── requirements.txt
     ```
     """)
