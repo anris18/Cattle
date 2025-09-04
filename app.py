@@ -3,7 +3,6 @@ import numpy as np
 from PIL import Image
 import tensorflow as tf
 from tensorflow.keras import layers, models
-import io
 
 # Create a simple model directly in the code
 @st.cache_resource
@@ -192,17 +191,17 @@ def display_breed_info(breed_name):
             padding: 15px; 
             border-radius: 8px; 
             margin-bottom: 10px;
-            font-color: #ff0000;
             font-size: 16px;
+            color: #000000;  /* Explicit black text color */
         ">
-            <p>🧬 <b>Pedigree / Lineage</b>: {info['Pedigree']}</p>
-            <p>🍼 <b>Productivity</b>: {info['Productivity']}</p>
-            <p>🌿 <b>Optimal Rearing Conditions</b>: {info['Optimal Conditions']}</p>
-            <p>🌍 <b>Origin</b>: {info['Origin']}</p>
-            <p>🐮 <b>Physical Characteristics</b>: {info['Characteristics']}</p>
-            <p>❤️️ <b>Lifespan</b>: {info['Lifespan']}</p>
-            <p>💉 <b>Temperament</b>: {info['Temperament']}</p>
-            <p>🥩 <b>Productivity Metrics</b>: {info['Productivity Metrics']}</p>
+            <p>🧬 <b style="color: #000000;">Pedigree / Lineage</b>: <span style="color: #000000;">{info['Pedigree']}</span></p>
+            <p>🍼 <b style="color: #000000;">Productivity</b>: <span style="color: #000000;">{info['Productivity']}</span></p>
+            <p>🌿 <b style="color: #000000;">Optimal Rearing Conditions</b>: <span style="color: #000000;">{info['Optimal Conditions']}</span></p>
+            <p>🌍 <b style="color: #000000;">Origin</b>: <span style="color: #000000;">{info['Origin']}</span></p>
+            <p>🐮 <b style="color: #000000;">Physical Characteristics</b>: <span style="color: #000000;">{info['Characteristics']}</span></p>
+            <p>❤️️ <b style="color: #000000;">Lifespan</b>: <span style="color: #000000;">{info['Lifespan']}</span></p>
+            <p>💉 <b style="color: #000000;">Temperament</b>: <span style="color: #000000;">{info['Temperament']}</span></p>
+            <p>🥩 <b style="color: #000000;">Productivity Metrics</b>: <span style="color: #000000;">{info['Productivity Metrics']}</span></p>
         </div>
         """
         st.markdown(info_html, unsafe_allow_html=True)
@@ -216,7 +215,7 @@ if uploaded_file is not None:
         st.image(image, caption='📷 Uploaded Cattle Image', use_container_width=True)
         
         # Show image analysis
-        with st.expander("🔍 Image Analysis"):
+        with st.expander("🔍 Image Analysis", expanded=True):
             st.write("**Image Details:**")
             st.write(f"- Dimensions: {image.size[0]} x {image.size[1]} pixels")
             st.write(f"- Mode: {image.mode}")
@@ -240,11 +239,13 @@ if uploaded_file is not None:
         st.subheader("📚 Breed Information")
         display_breed_info(breed)
         
-        # Disclaimer
-        st.info("""
+        # Disclaimer - with explicit text color
+        st.markdown("""
+        <div style="color: #000000;">
         **ℹ️ Note:** This is a demonstration application. 
         For accurate breed identification, a properly trained model with extensive dataset is required.
-        """)
+        </div>
+        """, unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"⚠️ Error processing image: {str(e)}")
@@ -268,3 +269,21 @@ else:
     - Ensure the cattle is the main subject of the photo
     - Avoid blurry or distant shots
     """)
+    
+    # Add some sample images or placeholders
+    st.subheader("🖼️ Sample Images")
+    st.write("For best results, upload images similar to these:")
+    
+    sample_cols = st.columns(3)
+    with sample_cols[0]:
+        st.write("**Friesian Cattle**")
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Cow_female_black_white.jpg/320px-Cow_female_black_white.jpg", 
+                 use_container_width=True)
+    with sample_cols[1]:
+        st.write("**Jersey Cattle**")
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Jersey_cow.jpg/320px-Jersey_cow.jpg", 
+                 use_container_width=True)
+    with sample_cols[2]:
+        st.write("**Sahiwal Cattle**")
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Sahiwal_cow.jpg/320px-Sahiwal_cow.jpg", 
+                 use_container_width=True)
