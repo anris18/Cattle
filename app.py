@@ -71,41 +71,88 @@ CONFIDENCE_THRESHOLD = 60.0
 def load_model():
     try:
         import tensorflow as tf
-        if os.path.exists("cattle_breed_model.h5"):
-            try:
-                return tf.keras.models.load_model("cattle_breed_model.h5", compile=False)
-            except:
-                try:
-                    return tf.keras.models.load_model("cattle_breed_model.h5", compile=True)
-                except Exception as e:
-                    st.error(f"Model loading failed: {e}")
-                    return None
-        else:
-            st.error("Model file not found!")
+        
+        if not os.path.exists("cattle_breed_model.h5"):
+            st.error("❌ Model file 'cattle_breed_model.h5' not found!")
             return None
+            
+        # Try different loading strategies
+        try:
+            # Method 1: Standard load
+            model = tf.keras.models.load_model("cattle_breed_model.h5", compile=False)
+            st.success("✅ Model loaded successfully with compile=False")
+            return model
+            
+        except Exception as e1:
+            st.warning(f"First load attempt failed: {e1}")
+            
+            try:
+                # Method 2: Load with compilation
+                model = tf.keras.models.load_model("cattle_breed_model.h5", compile=True)
+                st.success("✅ Model loaded successfully with compile=True")
+                return model
+                
+            except Exception as e2:
+                st.warning(f"Second load attempt failed: {e2}")
+                
+                try:
+                    # Method 3: Try loading with custom objects for specific architectures
+                    # This is common for models with custom layers or functional API
+                    model = tf.keras.models.load_model(
+                        "cattle_breed_model.h5", 
+                        compile=False,
+                        custom_objects={}
+                    )
+                    st.success("✅ Model loaded with custom objects")
+                    return model
+                    
+                except Exception as e3:
+                    st.error(f"All loading methods failed: {e3}")
+                    return None
+                    
     except ImportError:
+        st.error("❌ TensorFlow not available!")
+        return None
+    except Exception as e:
+        st.error(f"❌ Unexpected error loading model: {e}")
         return None
 
 # Load model
 model = load_model()
 
-# --- Prediction ---
+# --- Prediction with error handling ---
 def predict_breed(image):
     if model is None:
         return "Model not available", 0.0
     
     try:
-        import tensorflow as tf
+        # Preprocess image
         image = image.resize((IMG_SIZE, IMG_SIZE))
         img_array = np.array(image) / 255.0
-        img_array = np.expand_dims(img_array, axis=0)
         
-        prediction = model.predict(img_array, verbose=0)[0]
+        # Handle different input formats based on model architecture
+        if len(model.input_shape) == 4:  # Standard CNN (batch, height, width, channels)
+            img_array = np.expand_dims(img_array, axis=0)
+        elif len(model.input_shape) == 2:  # Flattened input
+            img_array = img_array.flatten()
+            img_array = np.expand_dims(img_array, axis=0)
+        
+        # Make prediction
+        prediction = model.predict(img_array, verbose=0)
+        
+        # Handle different output formats
+        if isinstance(prediction, list):
+            # Model returns multiple outputs
+            prediction = prediction[0]  # Take the first output
+        
+        prediction = prediction[0]  # Get first batch element
+        
         predicted_label = breed_labels[np.argmax(prediction)]
         confidence = float(np.max(prediction)) * 100
         return predicted_label, confidence
+        
     except Exception as e:
-        return f"Prediction error: {e}", 0.0
+        return f"Prediction error: {str(e)}", 0.0
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="🐄 Cattle Breed Classifier", layout="centered")
@@ -123,15 +170,27 @@ except ImportError:
 
 # Display status
 if not TENSORFLOW_AVAILABLE:
-    st.error("❌ TensorFlow not installed! Make sure requirements.txt includes tensorflow")
+    st.error("❌ TensorFlow not installed!")
 else:
     st.success(f"✅ TensorFlow {tf_version} installed")
 
-if model is None and TENSORFLOW_AVAILABLE:
-    st.warning("⚠️ Model could not be loaded. Check if 'cattle_breed_model.h5' exists.")
-elif model is not None:
+if model is None:
+    st.error("❌ Model could not be loaded. Possible reasons:")
+    st.write("- Model architecture mismatch")
+    st.write("- TensorFlow version incompatibility")
+    st.write("- Corrupted model file")
+    st.write("- Missing custom layers")
+else:
     st.success("✅ Model loaded successfully!")
+    
+    # Display model info for debugging
+    with st.expander("🔧 Model Information"):
+        st.write(f"Input shape: {model.input_shape}")
+        st.write(f"Output shape: {model.output_shape}")
+        st.write(f"Number of layers: {len(model.layers)}")
+        st.write(f"Model type: {type(model)}")
 
+# File uploader
 uploaded_file = st.file_uploader("Upload Cattle Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -147,6 +206,7 @@ if uploaded_file is not None:
                 st.error(f"❌ {breed}")
             elif confidence < CONFIDENCE_THRESHOLD:
                 st.error("🚫 Low confidence. Try a clearer cattle image.")
+                st.info(f"Current confidence: {confidence:.2f}%")
             else:
                 st.success(f"✅ Predicted Breed: **{breed}**")
                 st.info(f"🔎 Confidence: {confidence:.2f}%")
@@ -172,22 +232,38 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"❌ Error processing image: {e}")
 
-# Instructions
-with st.expander("💡 Setup Instructions"):
+# Debug information
+with st.expander("🛠️ Debug Information"):
+    st.write(f"TensorFlow Available: {TENSORFLOW_AVAILABLE}")
+    if TENSORFLOW_AVAILABLE:
+        st.write(f"TensorFlow Version: {tf_version}")
+    st.write(f"Model Loaded: {model is not None}")
+    st.write(f"Model File Exists: {os.path.exists('cattle_breed_model.h5')}")
+    if os.path.exists("cattle_breed_model.h5"):
+        st.write(f"Model file size: {os.path.getsize('cattle_breed_model.h5')} bytes")
+
+# Troubleshooting guide
+with st.expander("❓ Troubleshooting Guide"):
     st.write("""
-    **For Streamlit Cloud Deployment:**
+    **Common Solutions:**
     
-    1. **Create requirements.txt with:**
+    1. **TensorFlow Version Mismatch:**
+       - Try: `pip install tensorflow==2.12.0`
+    
+    2. **Model Architecture Issues:**
+       - The model might have been created with a different architecture
+       - Try recreating the model with current TensorFlow version
+    
+    3. **Custom Layers:**
+       - If the model uses custom layers, they need to be defined during loading
+    
+    4. **Corrupted File:**
+       - Verify the model file is not corrupted
+       - Try re-uploading the model file
+    
+    **Quick Fix:**
+    ```bash
+    pip uninstall tensorflow -y
+    pip install tensorflow==2.12.0
     ```
-    tensorflow>=2.12.0
-    streamlit>=1.22.0
-    pillow>=9.5.0
-    numpy>=1.24.0
-    ```
-    
-    2. **Upload both files to GitHub**
-    
-    3. **Deploy on Streamlit Cloud from GitHub**
-    
-    4. **Make sure 'cattle_breed_model.h5' is in the repository**
     """)
