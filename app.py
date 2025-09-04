@@ -9,7 +9,6 @@ try:
     JOBLIB_AVAILABLE = True
 except ImportError:
     JOBLIB_AVAILABLE = False
-    st.warning("Joblib not available. Running in demo mode.")
 
 # Set page config
 st.set_page_config(
@@ -38,14 +37,8 @@ def load_cattle_model():
         try:
             model = joblib.load(model_path_joblib)
             model_type = "joblib"
-            st.success("✅ Joblib model loaded successfully!")
-            
-            # Check model type and expected features
-            if hasattr(model, 'n_features_in_'):
-                st.info(f"Model expects {model.n_features_in_} features")
-            
-        except Exception as e:
-            st.error(f"Error loading joblib model: {e}")
+        except Exception:
+            pass
     
     return model, model_type
 
@@ -120,7 +113,7 @@ breed_info = {
 IMG_SIZE = 224
 CONFIDENCE_THRESHOLD = 60.0
 
-# Feature extraction function for images - now with 9 features
+# Feature extraction function for images - with 9 features
 def extract_features(image):
     """Extract 9 features from image to match the trained model"""
     # Resize image
@@ -151,7 +144,6 @@ def extract_features(image):
     brightness = np.mean(gray_img)
     
     # Combine all features to get 9 total features
-    # 3 color means + 3 color stds + 1 texture mean + 1 texture variance + 1 brightness = 9 features
     features = np.concatenate([
         avg_color,          # 3 features
         color_std,          # 3 features
@@ -172,9 +164,6 @@ def predict_breed(image):
             # Reshape for sklearn (1 sample, n features)
             features_reshaped = features.reshape(1, -1)
             
-            # Debug: show feature count
-            st.write(f"Extracted {len(features)} features")
-            
             # Check if model has predict_proba method
             if hasattr(model, 'predict_proba'):
                 prediction_proba = model.predict_proba(features_reshaped)[0]
@@ -190,8 +179,7 @@ def predict_breed(image):
                         prediction_proba[i] = 0.1 / (len(breed_labels) - 1)
             
             prediction = prediction_proba
-        except Exception as e:
-            st.error(f"Prediction error: {e}")
+        except Exception:
             # Fallback to demo mode
             prediction = demo_prediction(image)
     else:
@@ -260,13 +248,7 @@ def display_breed_info(breed_name):
         """
         st.markdown(info_html, unsafe_allow_html=True)
     else:
-        st.warning("⚠️ No additional information found for this breed.")
-
-# Display model status
-if model is None:
-    st.info("🔧 Running in demonstration mode. For accurate predictions, please ensure the joblib model file is available.")
-else:
-    st.success(f"✅ Model loaded successfully! (Type: {model_type})")
+        st.warning("No additional information found for this breed.")
 
 # Image uploader
 uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "png"])
@@ -275,46 +257,27 @@ uploaded_file = st.file_uploader("Choose a cattle image", type=["jpg", "jpeg", "
 if uploaded_file is not None:
     try:
         image = Image.open(uploaded_file).convert('RGB')
-        st.image(image, caption='📷 Uploaded Cattle Image', width='stretch')
-        
-        # Show image analysis
-        with st.expander("🔍 Image Analysis", expanded=True):
-            st.write("**Image Details:**")
-            st.write(f"- Dimensions: {image.size[0]} x {image.size[1]} pixels")
-            st.write(f"- Mode: {image.mode}")
-            
-            # Simple color analysis
-            img_array = np.array(image)
-            avg_color = np.mean(img_array, axis=(0, 1))
-            st.write(f"- Average RGB color: ({avg_color[0]:.1f}, {avg_color[1]:.1f}, {avg_color[2]:.1f})")
+        st.image(image, caption='Uploaded Cattle Image', width='stretch')
 
-        with st.spinner("🔍 Analyzing cattle breed..."):
+        with st.spinner("Analyzing cattle breed..."):
             breed, confidence = predict_breed(image)
 
         if confidence < CONFIDENCE_THRESHOLD:
-            st.warning("⚠️ Low confidence prediction. This might not be accurate.")
+            st.warning("Low confidence prediction. Try a clearer image.")
         else:
-            st.success(f"✅ Predicted Breed: **{breed.capitalize()}**")
+            st.success(f"Predicted Breed: **{breed.capitalize()}**")
         
-        st.info(f"🔎 Confidence: {confidence:.2f}%")
+        st.info(f"Confidence: {confidence:.2f}%")
         
         # Show breed information
-        st.subheader("📚 Breed Information")
+        st.subheader("Breed Information")
         display_breed_info(breed)
-        
-        # Disclaimer
-        st.markdown("""
-        <div style="color: #000000;">
-        **ℹ️ Note:** This is a demonstration application. 
-        For accurate breed identification, a properly trained model with extensive dataset is required.
-        </div>
-        """, unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"⚠️ Error processing image: {str(e)}")
+        st.error(f"Error processing image: {str(e)}")
 else:
     # Show sample images and information when no image is uploaded
-    st.subheader("📋 Supported Cattle Breeds")
+    st.subheader("Supported Cattle Breeds")
     
     cols = st.columns(3)
     breed_list = list(breed_info.keys())
@@ -326,30 +289,11 @@ else:
             st.write(f"Origin: {breed_info[breed]['Origin']}")
 
     st.info("""
-    **📸 Tips for better results:**
+    **Tips for better results:**
     - Use clear, well-lit images
     - Focus on the side view of the cattle
     - Ensure the cattle is the main subject of the photo
     - Avoid blurry or distant shots
-    """)
-
-# Add instructions for setting up the model files
-with st.expander("ℹ️ Setup Instructions"):
-    st.markdown("""
-    ## How to set up the model files:
-    
-    1. Ensure you have the following file in your working directory:
-       - `cattle_breed_model.joblib` (Scikit-learn model)
-    
-    2. The app will use the joblib model for predictions.
-    
-    ## File structure:
-    ```
-    your-project-folder/
-    ├── app.py
-    ├── cattle_breed_model.joblib
-    └── requirements.txt
-    ```
     """)
 
 # Add footer
