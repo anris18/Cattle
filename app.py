@@ -3,12 +3,19 @@ import numpy as np
 from PIL import Image
 import os
 
-# Try to import joblib with error handling
+# Try to import required libraries with error handling
 try:
     import joblib
     JOBLIB_AVAILABLE = True
 except ImportError:
     JOBLIB_AVAILABLE = False
+
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import load_model
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
 
 # Set page config
 st.set_page_config(
@@ -27,13 +34,22 @@ breed_labels = ["Ayrshire", "Friesian", "Jersey", "Lankan White", "Sahiwal", "Ze
 # Check and load model files
 @st.cache_resource
 def load_cattle_model():
+    model_path_h5 = "cattle_breed_model.h5"
     model_path_joblib = "cattle_breed_model.joblib"
     
     model = None
     model_type = None
     
-    # Try to load joblib model
-    if JOBLIB_AVAILABLE and os.path.exists(model_path_joblib):
+    # Try to load TensorFlow model first
+    if TENSORFLOW_AVAILABLE and os.path.exists(model_path_h5):
+        try:
+            model = load_model(model_path_h5)
+            model_type = "h5"
+        except Exception:
+            pass
+    
+    # If TensorFlow model not available, try to load joblib model
+    if model is None and JOBLIB_AVAILABLE and os.path.exists(model_path_joblib):
         try:
             model = joblib.load(model_path_joblib)
             model_type = "joblib"
@@ -154,33 +170,52 @@ def extract_features(image):
     
     return features
 
-# Prediction function
-def predict_breed(image):
-    # Extract features from image
-    features = extract_features(image)
+# Prediction function for TensorFlow model
+def predict_with_tf_model(image):
+    # Preprocess image for TensorFlow model
+    image = image.resize((IMG_SIZE, IMG_SIZE))
+    img_array = np.array(image) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
     
-    if model is not None and model_type == "joblib":
+    # Get prediction
+    prediction = model.predict(img_array, verbose=0)[0]
+    return prediction
+
+# Prediction function for joblib model
+def predict_with_joblib_model(image):
+    # Extract features for joblib model
+    features = extract_features(image)
+    features_reshaped = features.reshape(1, -1)
+    
+    # Check if model has predict_proba method
+    if hasattr(model, 'predict_proba'):
+        prediction = model.predict_proba(features_reshaped)[0]
+    else:
+        # For models without probability estimates
+        predicted_class = model.predict(features_reshaped)[0]
+        # Create dummy probabilities
+        prediction = np.zeros(len(breed_labels))
+        prediction[predicted_class] = 0.9
+        # Add some noise to other classes
+        for i in range(len(breed_labels)):
+            if i != predicted_class:
+                prediction[i] = 0.1 / (len(breed_labels) - 1)
+    
+    return prediction
+
+# Main prediction function
+def predict_breed(image):
+    if model is not None:
         try:
-            # Reshape for sklearn (1 sample, n features)
-            features_reshaped = features.reshape(1, -1)
-            
-            # Check if model has predict_proba method
-            if hasattr(model, 'predict_proba'):
-                prediction_proba = model.predict_proba(features_reshaped)[0]
+            if model_type == "h5" and TENSORFLOW_AVAILABLE:
+                prediction = predict_with_tf_model(image)
+            elif model_type == "joblib" and JOBLIB_AVAILABLE:
+                prediction = predict_with_joblib_model(image)
             else:
-                # For models without probability estimates
-                prediction = model.predict(features_reshaped)[0]
-                # Create dummy probabilities
-                prediction_proba = np.zeros(len(breed_labels))
-                prediction_proba[prediction] = 0.9
-                # Add some noise to other classes
-                for i in range(len(breed_labels)):
-                    if i != prediction:
-                        prediction_proba[i] = 0.1 / (len(breed_labels) - 1)
-            
-            prediction = prediction_proba
+                # Fallback to demo mode
+                prediction = demo_prediction(image)
         except Exception:
-            # Fallback to demo mode
+            # Fallback to demo mode if prediction fails
             prediction = demo_prediction(image)
     else:
         # Fallback to demo mode
@@ -298,3 +333,4 @@ else:
 
 # Add footer
 st.markdown("---")
+st.markdown("**Cattle Breed Identifier** | [GitHub Repository](https://github.com/anris18/Cattle)")
