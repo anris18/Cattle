@@ -1,34 +1,7 @@
-import warnings
-warnings.filterwarnings("ignore")
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow warnings
-import logging
-logging.getLogger('streamlit').setLevel(logging.ERROR)
-
-# Suppress specific Streamlit warnings
-import sys
-if not hasattr(sys, '_called_from_test'):
-    # This prevents the ScriptRunContext warning
-    import contextlib
-    import io
-    stderr = io.StringIO()
-    with contextlib.redirect_stderr(stderr):
-        import streamlit as st
-else:
-    import streamlit as st
-
+import streamlit as st
 import numpy as np
 from PIL import Image
-
-# Try to import TensorFlow with fallback
-try:
-    import tensorflow as tf
-    # Suppress TensorFlow logging
-    tf.get_logger().setLevel('ERROR')
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    st.error("TensorFlow is not installed. Please install it using: pip install tensorflow")
-    TENSORFLOW_AVAILABLE = False
+import os
 
 # --- Breed Information ---
 breed_info_raw = {
@@ -96,30 +69,25 @@ CONFIDENCE_THRESHOLD = 60.0
 # --- Load Model ---
 @st.cache_resource
 def load_model():
-    if not TENSORFLOW_AVAILABLE:
-        return None
-        
     try:
+        import tensorflow as tf
         if os.path.exists("cattle_breed_model.h5"):
-            # Try multiple loading approaches
             try:
                 return tf.keras.models.load_model("cattle_breed_model.h5", compile=False)
-            except Exception as e:
-                st.warning(f"First load attempt failed: {e}")
+            except:
                 try:
                     return tf.keras.models.load_model("cattle_breed_model.h5", compile=True)
                 except Exception as e:
-                    st.warning(f"Second load attempt failed: {e}")
+                    st.error(f"Model loading failed: {e}")
                     return None
         else:
-            st.error("❌ Model file 'cattle_breed_model.h5' not found!")
+            st.error("Model file not found!")
             return None
-    except Exception as e:
-        st.error(f"❌ Error loading model: {e}")
+    except ImportError:
         return None
 
 # Load model
-model = load_model() if TENSORFLOW_AVAILABLE else None
+model = load_model()
 
 # --- Prediction ---
 def predict_breed(image):
@@ -127,6 +95,7 @@ def predict_breed(image):
         return "Model not available", 0.0
     
     try:
+        import tensorflow as tf
         image = image.resize((IMG_SIZE, IMG_SIZE))
         img_array = np.array(image) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
@@ -143,12 +112,24 @@ st.set_page_config(page_title="🐄 Cattle Breed Classifier", layout="centered")
 st.title("🐄 Cattle Breed Classifier")
 st.write("Upload a cattle image and let AI identify its breed.")
 
+# Check TensorFlow availability
+try:
+    import tensorflow as tf
+    TENSORFLOW_AVAILABLE = True
+    tf_version = tf.__version__
+except ImportError:
+    TENSORFLOW_AVAILABLE = False
+    tf_version = "Not installed"
+
 # Display status
 if not TENSORFLOW_AVAILABLE:
-    st.error("❌ TensorFlow not installed! Run: `pip install tensorflow`")
-elif model is None:
-    st.warning("⚠️ Model not loaded. Check if 'cattle_breed_model.h5' exists in the same folder.")
+    st.error("❌ TensorFlow not installed! Make sure requirements.txt includes tensorflow")
 else:
+    st.success(f"✅ TensorFlow {tf_version} installed")
+
+if model is None and TENSORFLOW_AVAILABLE:
+    st.warning("⚠️ Model could not be loaded. Check if 'cattle_breed_model.h5' exists.")
+elif model is not None:
     st.success("✅ Model loaded successfully!")
 
 uploaded_file = st.file_uploader("Upload Cattle Image", type=["jpg", "jpeg", "png"])
@@ -166,7 +147,6 @@ if uploaded_file is not None:
                 st.error(f"❌ {breed}")
             elif confidence < CONFIDENCE_THRESHOLD:
                 st.error("🚫 Low confidence. Try a clearer cattle image.")
-                st.info(f"Current confidence: {confidence:.2f}% (needs > {CONFIDENCE_THRESHOLD}%)")
             else:
                 st.success(f"✅ Predicted Breed: **{breed}**")
                 st.info(f"🔎 Confidence: {confidence:.2f}%")
@@ -192,34 +172,22 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"❌ Error processing image: {e}")
 
-# Debug information (collapsed by default)
-with st.expander("🛠️ Debug Information"):
-    st.write(f"TensorFlow Available: {TENSORFLOW_AVAILABLE}")
-    st.write(f"Model Loaded: {model is not None}")
-    if os.path.exists("cattle_breed_model.h5"):
-        st.write(f"Model file size: {os.path.getsize('cattle_breed_model.h5')} bytes")
-    else:
-        st.write("Model file: Not found")
-    
-    if TENSORFLOW_AVAILABLE:
-        st.write(f"TensorFlow Version: {tf.__version__}")
-
 # Instructions
 with st.expander("💡 Setup Instructions"):
     st.write("""
-    **To run this app:**
+    **For Streamlit Cloud Deployment:**
     
-    1. **Install dependencies:**
-    ```bash
-    pip install tensorflow streamlit pillow numpy
+    1. **Create requirements.txt with:**
+    ```
+    tensorflow>=2.12.0
+    streamlit>=1.22.0
+    pillow>=9.5.0
+    numpy>=1.24.0
     ```
     
-    2. **Place 'cattle_breed_model.h5' in the same folder**
+    2. **Upload both files to GitHub**
     
-    3. **Run:**
-    ```bash
-    streamlit run app.py
-    ```
+    3. **Deploy on Streamlit Cloud from GitHub**
     
-    **If you still see warnings:** They are harmless and don't affect functionality!
+    4. **Make sure 'cattle_breed_model.h5' is in the repository**
     """)
