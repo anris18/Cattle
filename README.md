@@ -186,6 +186,9 @@ Image uploads are limited to 200MB per file (JPG, JPEG, PNG formats)
 
 
 Contributing
+
+
+
 We welcome contributions to:
 
 Improve model accuracy
