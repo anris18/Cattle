@@ -1,15 +1,22 @@
 🐄 Indian Cattle Breed Identifier
+
 An AI-powered web application for identifying Indian cattle breeds from images, providing detailed breed information, and facilitating cattle trading through a built-in marketplace.
 
+
+
 Features
+
 🎯 Core Functionality
-Breed Identification: Upload images of cattle to identify their breed using a deep learning model
 
-Multi-language Support: Available in English, Hindi, and Telugu
+>Breed Identification: Upload images of cattle to identify their breed using a deep learning model
 
-Breed Information: Detailed characteristics, productivity metrics, and physical measurements for each breed
+>Multi-language Support: Available in English, Hindi, and Telugu
 
-Classification History: Track and download past identification results
+>Breed Information: Detailed characteristics, productivity metrics, and physical measurements for each breed
+
+> Classification History: Track and download past identification results
+
+
 
 🛒 Marketplace
 Buy/Sell Cattle: Browse and create listings for cattle trading
